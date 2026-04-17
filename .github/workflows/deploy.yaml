@@ -60,8 +60,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            APP_VERSION=${{ github.ref_name }}
 
       - name: Comment image tag on PR
         if: github.event_name == 'pull_request'
@@ -101,27 +99,43 @@ jobs:
         with:
           version: "latest"
 
+      - name: Set up Kustomize
+        uses: imranismail/setup-kustomize@v2
+
       - name: Configure kubeconfig
         run: |
           mkdir -p $HOME/.kube
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
 
-      - name: Apply Kubernetes manifests
-        run: kubectl apply -f k8s/
+      - name: Ensure namespace exists
+        run: kubectl apply -f k8s/namespace.yaml
 
-      - name: Update deployment image
-        env:
-          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag }}
+      - name: Create or update image pull secret
         run: |
-          kubectl set image deployment/kids-tales \
-            kids-tales=$IMAGE \
-            -n kids-tales
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }} \
+            --namespace=kids-tales \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Annotate deployment with version
+      - name: Set image tag
+        run: |
+          cd k8s
+          kustomize edit set image \
+            ghcr.io/talesmgodois/kids-tales:${{ needs.build-and-push.outputs.image_tag }}
+          kustomize edit add annotation \
+            app.kubernetes.io/version:${{ needs.build-and-push.outputs.image_tag }} \
+            --force
+
+      - name: Apply manifests
+        run: kubectl apply -k k8s/
+
+      - name: Annotate rollout cause
         run: |
           kubectl annotate deployment kids-tales \
-            kubernetes.io/change-cause="Deploy ${{ github.ref_name }} - ${{ github.sha }}" \
+            kubernetes.io/change-cause="Deploy ${{ github.ref_name }} (${{ github.sha }})" \
             -n kids-tales \
             --overwrite
 
