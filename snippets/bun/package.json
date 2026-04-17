@@ -6,6 +6,7 @@
     "dev": "bun run --watch src/index.ts"
   },
   "dependencies": {
+    "@google/genai": "^1.50.1",
     "ioredis": "^5.10.1",
     "nodemailer": "^6.9.16"
   },
