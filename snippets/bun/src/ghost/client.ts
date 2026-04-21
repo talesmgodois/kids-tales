@@ -54,55 +54,46 @@ export class GhostClient {
 
   constructor(url: string, adminApiKey: string) {
     this.baseUrl = url.replace(/\/$/, "");
-    [this.keyId, this.secret] = adminApiKey.split(":");
+    const [keyId, secret] = adminApiKey.split(":");
+    this.keyId = keyId;
+    this.secret = secret;
   }
 
-  private get token() {
-    return buildJwt(this.keyId, this.secret);
+  private get authHeader() {
+    return { Authorization: `Ghost ${buildJwt(this.keyId, this.secret)}` };
   }
 
-  private get jsonHeaders() {
-    return { "Content-Type": "application/json", Authorization: `Ghost ${this.token}` };
+  private get headers() {
+    return { "Content-Type": "application/json", ...this.authHeader };
   }
 
-  // Single fetch wrapper: handles auth headers, error checking, and JSON parsing.
-  // Returns undefined for 204 No Content (e.g. DELETE).
-  private async apiFetch<T>(method: string, path: string, body?: object): Promise<T> {
-    const res = await fetch(`${this.baseUrl}/ghost/api/admin${path}`, {
-      method,
-      headers: body !== undefined ? this.jsonHeaders : { Authorization: `Ghost ${this.token}` },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-
-    if (!res.ok) {
-      throw new Error(`Ghost ${method} ${path} → ${res.status}: ${await res.text()}`);
-    }
-
-    return (res.status === 204 ? undefined : res.json()) as T;
+  private endpoint(path: string) {
+    return `${this.baseUrl}/ghost/api/admin${path}`;
   }
 
   async createPost(input: CreatePostInput): Promise<GhostPost> {
-    const data = await this.apiFetch<{ posts: GhostPost[] }>(
-      "POST",
-      "/posts/?source=html",
-      { posts: [{ status: "draft", ...input }] }
-    );
-    return data.posts[0];
-  }
-
-  async getPost(id: string): Promise<GhostPost> {
-    const data = await this.apiFetch<{ posts: GhostPost[] }>("GET", `/posts/${id}/`);
+    const res = await fetch(this.endpoint("/posts/?source=html"), {
+      method: "POST",
+      headers: this.headers,
+      body: JSON.stringify({ posts: [{ status: "draft", ...input }] }),
+    });
+    if (!res.ok) throw new Error(`Ghost createPost → ${res.status}: ${await res.text()}`);
+    const data = await res.json();
     return data.posts[0];
   }
 
   async updatePost(id: string, input: UpdatePostInput): Promise<GhostPost> {
     // Ghost requires updated_at for optimistic concurrency
-    const { updated_at } = await this.getPost(id);
-    const data = await this.apiFetch<{ posts: GhostPost[] }>(
-      "PUT",
-      `/posts/${id}/?source=html`,
-      { posts: [{ ...input, updated_at }] }
-    );
+    const current = await this.getPost(id);
+    const res = await fetch(this.endpoint(`/posts/${id}/?source=html`), {
+      method: "PUT",
+      headers: this.headers,
+      body: JSON.stringify({
+        posts: [{ ...input, updated_at: current.updated_at }],
+      }),
+    });
+    if (!res.ok) throw new Error(`Ghost updatePost → ${res.status}: ${await res.text()}`);
+    const data = await res.json();
     return data.posts[0];
   }
 
@@ -110,8 +101,21 @@ export class GhostClient {
     return this.updatePost(id, { status: "published" });
   }
 
+  async getPost(id: string): Promise<GhostPost> {
+    const res = await fetch(this.endpoint(`/posts/${id}/`), {
+      headers: this.authHeader,
+    });
+    if (!res.ok) throw new Error(`Ghost getPost → ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    return data.posts[0];
+  }
+
   async deletePost(id: string): Promise<void> {
-    await this.apiFetch("DELETE", `/posts/${id}/`);
+    const res = await fetch(this.endpoint(`/posts/${id}/`), {
+      method: "DELETE",
+      headers: this.authHeader,
+    });
+    if (!res.ok) throw new Error(`Ghost deletePost → ${res.status}: ${await res.text()}`);
   }
 }
 
