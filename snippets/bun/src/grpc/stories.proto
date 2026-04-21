@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package stories;
+
+service StoriesService {
+  // Unary: busca uma história pelo ID
+  rpc GetStory (GetStoryRequest) returns (Story);
+
+  // Unary: cria uma nova história
+  rpc CreateStory (CreateStoryRequest) returns (Story);
+
+  // Server streaming: lista histórias com filtro opcional
+  rpc ListStories (ListStoriesRequest) returns (stream Story);
+}
+
+message Story {
+  string id          = 1;
+  string title       = 2;
+  string author      = 3;
+  string content     = 4;
+  string category    = 5;
+  int32  age_min     = 6;
+}
+
+message GetStoryRequest {
+  string id = 1;
+}
+
+message CreateStoryRequest {
+  string title    = 1;
+  string author   = 2;
+  string content  = 3;
+  string category = 4;
+  int32  age_min  = 5;
+}
+
+message ListStoriesRequest {
+  string category = 1; // filtro opcional; vazio retorna todas
+}
