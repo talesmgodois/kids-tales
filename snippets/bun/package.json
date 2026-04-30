@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "scripts": {
     "start": "bun run src/index.ts",
-    "dev": "bun run --watch src/index.ts"
+    "dev": "bun run --watch src/index.ts",
+    "generate:proto": "bun run scripts/gen-proto.ts"
   },
   "dependencies": {
     "@google/genai": "^1.50.1",
@@ -16,6 +17,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/ioredis": "^5.0.0",
-    "@types/nodemailer": "^6.4.17"
+    "@types/nodemailer": "^6.4.17",
+    "glob": "^13.0.6"
   }
 }
