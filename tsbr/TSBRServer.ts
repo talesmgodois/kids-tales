@@ -8,8 +8,24 @@ interface RegisteredService {
   methods: string[];
 }
 
+function toArrayBuffer(input: ArrayBuffer | SharedArrayBuffer | Uint8Array): ArrayBuffer {
+  if (input instanceof Uint8Array) {
+    const copied = new Uint8Array(input.byteLength);
+    copied.set(input);
+    return copied.buffer;
+  }
+
+  if (input instanceof ArrayBuffer) {
+    return input;
+  }
+
+  const copied = new Uint8Array(input.byteLength);
+  copied.set(new Uint8Array(input));
+  return copied.buffer;
+}
+
 function decodeFlexBuffer(buffer: Uint8Array): unknown {
-  return flexbuffers.toObject(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
+  return flexbuffers.toObject(toArrayBuffer(buffer));
 }
 
 function encodeFlexBuffer(value: unknown): Uint8Array {
@@ -62,6 +78,11 @@ export class TSBRServer {
     return Bun.serve({
       port,
       fetch: async (request) => {
+        const url = new URL(request.url);
+        if (url.pathname !== "/tsbr") {
+          return this.errorResponse(404, "TSBR endpoint not found.");
+        }
+
         const sidHeader = request.headers.get("xts");
         const midHeader = request.headers.get("xtm");
         const argsHeader = request.headers.get("xta");
@@ -107,7 +128,7 @@ export class TSBRServer {
           }
 
           const result = await method.apply(service.instance, args);
-          return new Response(encodeFlexBuffer(result), {
+          return new Response(toArrayBuffer(encodeFlexBuffer(result)), {
             headers: {
               "content-type": "application/octet-stream",
             },
@@ -121,7 +142,7 @@ export class TSBRServer {
   }
 
   private errorResponse(status: number, message: string): Response {
-    return new Response(encodeFlexBuffer({ error: message }), {
+    return new Response(toArrayBuffer(encodeFlexBuffer({ error: message })), {
       status,
       headers: {
         "content-type": "application/octet-stream",

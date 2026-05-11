@@ -29,6 +29,22 @@ function normalizeBytes(input: ArrayBuffer | Uint8Array): Uint8Array {
   return new Uint8Array(input);
 }
 
+function toArrayBuffer(input: ArrayBuffer | SharedArrayBuffer | Uint8Array): ArrayBuffer {
+  if (input instanceof Uint8Array) {
+    const copied = new Uint8Array(input.byteLength);
+    copied.set(input);
+    return copied.buffer;
+  }
+
+  if (input instanceof ArrayBuffer) {
+    return input;
+  }
+
+  const copied = new Uint8Array(input.byteLength);
+  copied.set(new Uint8Array(input));
+  return copied.buffer;
+}
+
 function base64FromBytes(input: Uint8Array): string {
   if (typeof Buffer !== "undefined") {
     return Buffer.from(input.buffer, input.byteOffset, input.byteLength).toString("base64");
@@ -104,10 +120,7 @@ export const tsbr = {
 
   unpack<T = unknown>(buffer: ArrayBuffer | Uint8Array): T {
     const normalized = normalizeBytes(buffer);
-    const payload = normalized.buffer.slice(
-      normalized.byteOffset,
-      normalized.byteOffset + normalized.byteLength,
-    );
+    const payload = toArrayBuffer(normalized);
     return flexbuffers.toObject(payload) as T;
   },
 
@@ -120,7 +133,7 @@ export const tsbr = {
     const endpoint = joinUrl(state.baseUrl, state.endpoint);
     const response = await state.fetchImpl(endpoint, {
       method: "POST",
-      body: tsbr.pack(args),
+      body: toArrayBuffer(tsbr.pack(args)),
       signal: options?.signal,
       headers: makeHeaders(sid, mid, options?.headers),
     });
