@@ -6,9 +6,18 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "scan:tsbr": "bun run scanner.ts",
+    "dev:tsbr": "bun run --watch main.ts",
+    "start:tsbr": "bun run main.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/node": "^25.6.2",
+    "ts-morph": "^28.0.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "flatbuffers": "^25.9.23"
   }
 }
