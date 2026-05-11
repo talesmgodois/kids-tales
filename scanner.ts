@@ -15,13 +15,12 @@ type ScannedMethod = {
   isStreamMethod: boolean;
 };
 
-function extractSid(decoratorText: string): number {
-  const sid = Number.parseInt(decoratorText, 10);
-  if (Number.isNaN(sid)) {
-    throw new Error(`Invalid TSBR sid: ${decoratorText}`);
-  }
-  return sid;
-}
+type ScannedService = {
+  className: string;
+  sourcePath: string;
+  sid: number;
+  methods: ScannedMethod[];
+};
 
 function normalizeImportPath(value: string): string {
   const normalized = value.replace(/\\/g, "/").replace(/\.ts$/, "");
@@ -66,6 +65,8 @@ async function run() {
   const outDir = resolve(process.cwd(), OUTPUT_DIR);
   await mkdir(outDir, { recursive: true });
 
+  const scannedServices: ScannedService[] = [];
+
   for (const sourceFile of serviceFiles) {
     for (const classDecl of sourceFile.getClasses()) {
       const tsbrDecorator = classDecl.getDecorators().find((decorator) => decorator.getName() === "TSBR");
@@ -73,12 +74,6 @@ async function run() {
         continue;
       }
 
-      const sidArg = tsbrDecorator.getArguments()[0];
-      if (!sidArg) {
-        throw new Error(`Class ${classDecl.getName() ?? "Unknown"} is missing @TSBR sid.`);
-      }
-
-      const sid = extractSid(sidArg.getText());
       const className = classDecl.getName();
       if (!className) {
         continue;
@@ -115,10 +110,43 @@ async function run() {
           mid: index,
         }));
 
-      const serviceImportPath = relative(outDir, sourceFile.getFilePath());
-      const output = renderClientClass(className, sid, serviceImportPath, scannedMethods);
-      await writeFile(resolve(outDir, `${className}.ts`), output, "utf8");
+      scannedServices.push({
+        className,
+        sourcePath: sourceFile.getFilePath(),
+        sid: -1,
+        methods: scannedMethods,
+      });
     }
+  }
+
+  const duplicatedNames = scannedServices
+    .map((service) => service.className)
+    .filter((name, index, all) => all.indexOf(name) !== index);
+
+  if (duplicatedNames.length > 0) {
+    throw new Error(
+      `Duplicated TSBR service names found: ${Array.from(new Set(duplicatedNames)).join(", ")}`,
+    );
+  }
+
+  scannedServices
+    .sort(
+      (left, right) =>
+        left.className.localeCompare(right.className) || left.sourcePath.localeCompare(right.sourcePath),
+    )
+    .forEach((service, index) => {
+      service.sid = index;
+    });
+
+  for (const service of scannedServices) {
+    const serviceImportPath = relative(outDir, service.sourcePath);
+    const output = renderClientClass(
+      service.className,
+      service.sid,
+      serviceImportPath,
+      service.methods,
+    );
+    await writeFile(resolve(outDir, `${service.className}.ts`), output, "utf8");
   }
 }
 

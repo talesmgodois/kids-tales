@@ -1,5 +1,5 @@
 import * as flexbuffers from "flatbuffers/js/flexbuffers.js";
-import { TSBR_SID_PROPERTY, type TsbrDecoratedPrototype } from "./decorators";
+import { TSBR_MARKER_PROPERTY, type TsbrDecoratedPrototype } from "./decorators";
 
 type ServiceInstance = Record<string, (...args: any[]) => unknown>;
 
@@ -46,19 +46,43 @@ function asArguments(value: unknown): unknown[] {
 }
 
 export class TSBRServer {
-  private readonly services = new Map<number, RegisteredService>();
+  private readonly services: RegisteredService[] = [];
 
   register(instances: any[]) {
-    for (const instance of instances) {
+    const decorated = instances.filter((instance) => {
       const prototype = Object.getPrototypeOf(instance) as TsbrDecoratedPrototype;
-      const sid = prototype?.[TSBR_SID_PROPERTY];
+      return prototype?.[TSBR_MARKER_PROPERTY] === true;
+    });
 
-      if (typeof sid !== "number" || Number.isNaN(sid)) {
-        throw new Error(
-          `TSBR service "${instance?.constructor?.name ?? "Unknown"}" is missing @TSBR(sid).`,
-        );
-      }
+    if (decorated.length !== instances.length) {
+      const invalid = instances.find((instance) => {
+        const prototype = Object.getPrototypeOf(instance) as TsbrDecoratedPrototype;
+        return prototype?.[TSBR_MARKER_PROPERTY] !== true;
+      });
 
+      throw new Error(
+        `TSBR service "${invalid?.constructor?.name ?? "Unknown"}" is missing @TSBR().`,
+      );
+    }
+
+    const duplicatedNames = decorated
+      .map((instance) => instance.constructor.name)
+      .filter((name, index, all) => all.indexOf(name) !== index);
+
+    if (duplicatedNames.length > 0) {
+      throw new Error(
+        `Duplicated TSBR service names found: ${Array.from(new Set(duplicatedNames)).join(", ")}`,
+      );
+    }
+
+    const orderedInstances = [...decorated].sort((left, right) =>
+      left.constructor.name.localeCompare(right.constructor.name),
+    );
+
+    this.services.length = 0;
+
+    for (const instance of orderedInstances) {
+      const prototype = Object.getPrototypeOf(instance) as TsbrDecoratedPrototype;
       const methods = Object.getOwnPropertyNames(prototype)
         .filter((name) => name !== "constructor" && typeof instance[name] === "function")
         .sort((left, right) => left.localeCompare(right));
@@ -67,7 +91,7 @@ export class TSBRServer {
         throw new Error(`TSBR service "${instance.constructor.name}" has no public methods.`);
       }
 
-      this.services.set(sid, {
+      this.services.push({
         instance,
         methods,
       });
@@ -98,7 +122,7 @@ export class TSBRServer {
           return this.errorResponse(400, "Invalid xts/xtm headers.");
         }
 
-        const service = this.services.get(sid);
+        const service = this.services[sid];
         if (!service) {
           return this.errorResponse(404, `Service not found: sid=${sid}`);
         }

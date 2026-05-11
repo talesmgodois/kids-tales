@@ -6,7 +6,7 @@ interface FixtureRecord {
   score: number;
 }
 
-@TSBR(1)
+@TSBR()
 export class FixtureService {
   private readonly fixtures: FixtureRecord[] = [];
   private nextId = 1;
